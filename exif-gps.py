@@ -19,6 +19,37 @@ def validate_coordinates(lat, lon):
     
     return True, "Valid coordinates"
 
+def parse_coordinates_from_file(file_path):
+    """
+    Parse latitude and longitude from a text file.
+    Expected format: "latitude, longitude" on line 1
+    Returns tuple of (latitude, longitude) as floats
+    """
+    if not os.path.exists(file_path):
+        print(f"Error: Coordinates file '{file_path}' does not exist.")
+        return None, None
+    
+    try:
+        with open(file_path, 'r') as f:
+            content = f.readline().strip()
+        
+        # Extract coordinates using regex to handle various formats
+        pattern = r'([+-]?\d+\.?\d*)\s*,\s*([+-]?\d+\.?\d*)'
+        match = re.match(pattern, content)
+        
+        if match:
+            lat = float(match.group(1))
+            lon = float(match.group(2))
+            return lat, lon
+        else:
+            print(f"Error: Could not parse coordinates from '{content}'.")
+            print("Expected format: latitude, longitude (e.g., '42.564076, -70.898952')")
+            return None, None
+            
+    except Exception as e:
+        print(f"Error reading coordinates file: {str(e)}")
+        return None, None
+
 def extract_gps_from_image(source_image):
     """
     Extract GPS data from a source image using exiftool.
@@ -137,10 +168,11 @@ def update_gps_data(image_path, latitude, longitude, lat_ref=None, lon_ref=None)
 def main():
     parser = argparse.ArgumentParser(description='Update EXIF GPS data in an image.')
     
-    # Create a mutually exclusive group for --lat/--lon vs --from
+    # Create a mutually exclusive group for --lat/--lon vs --from vs --file
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--lat', type=float, help='Latitude value (-90 to 90)')
     group.add_argument('--from', dest='source_image', help='Source image to copy GPS data from')
+    group.add_argument('--file', dest='coords_file', help='Text file containing "latitude, longitude" on first line')
     
     # Longitude argument (only required if --lat is used)
     parser.add_argument('--lon', type=float, help='Longitude value (-180 to 180)')
@@ -203,6 +235,34 @@ def main():
                 sys.exit(1)
         else:
             print("No GPS data found in the source image or error reading data.")
+            sys.exit(1)
+    
+    # Case 3: Parse coordinates from a text file
+    elif args.coords_file:
+        print(f"Reading GPS coordinates from file '{args.coords_file}'")
+        
+        # Parse coordinates from the file
+        lat, lon = parse_coordinates_from_file(args.coords_file)
+        
+        if lat is not None and lon is not None:
+            # Validate coordinates
+            valid, message = validate_coordinates(lat, lon)
+            if not valid:
+                print(f"Error: {message}")
+                sys.exit(1)
+            
+            print(f"Coordinates from file:")
+            print(f"  Latitude: {lat}")
+            print(f"  Longitude: {lon}")
+            
+            # Update GPS data
+            if update_gps_data(args.image, lat, lon):
+                print("GPS data updated successfully.")
+            else:
+                print("Failed to update GPS data.")
+                sys.exit(1)
+        else:
+            print("Failed to extract valid coordinates from the file.")
             sys.exit(1)
 
 if __name__ == "__main__":
